@@ -610,6 +610,7 @@ function addModule(kind: string) {
   }
   parent.viewgroup_items.push(mod);
   state.selection = base.concat(parent.viewgroup_items.length - 1);
+  state.tab = "item";
   state.status = `Added ${mod.internal_title}`;
   renderAll(true);
 }

@@ -44,6 +44,7 @@ header, footer {
   background: rgba(18, 20, 15, 0.92);
 }
 footer { border-bottom: 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+#status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 180px; }
 .mark {
   width: 18px; height: 18px; border-radius: 5px;
@@ -99,7 +100,7 @@ header input[type="file"] { display: none; }
 .eye {
   border: 0; background: transparent; color: var(--muted); padding: 0 2px; border-radius: 4px;
 }
-.add-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+.add-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
 .add-row button { padding: 6px 9px; font-size: 12px; }
 
 .stage-wrap {
