@@ -2,7 +2,7 @@
 
 A what-you-see-is-what-you-get editor for [KLWP](https://kustom.rocks) live wallpaper presets. Open a `.klwp` file, move and restyle items on a phone canvas, then export a preset the KLWP app can import.
 
-The editor is published at https://graru1-wolfy.github.io/Kustom/
+The editor is published at https://graru1-wolfy.github.io/Kustom/. In the repository, set Settings → Pages to GitHub Actions so that address serves this site.
 
 ```bash
 npm install
