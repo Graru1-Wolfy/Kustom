@@ -1,11 +1,17 @@
+import { animationFrame, combineFrames, frameTransform, isRest, REST_FRAME, type AnimEnv, type AnimFrame } from "./advanced/animate";
+import { applyEvent, type KEvent } from "./advanced/events";
+import { paintAnimate, paintColor, paintEvents, paintForm, paintFormula, paintSource, renderToolList, type StudioHost } from "./advanced/panel";
+import type { Tool } from "./advanced/tools";
 import { deviceNow, defaultDevice } from "./device";
+import { evalLoose, globalValue, makeCtx, stringify } from "./formula/eval";
 import { readFile, writeArchive } from "./io";
 import { isContainer, layoutPreset, pathKey, positionWrites, presetSize, type MeasureFn } from "./layout";
 import { moduleAt, parentAt, setLiteral } from "./props";
 import { blankPreset, harborPreset } from "./sample";
 import type { Device, GlobalDef, KModule, Preset, SceneNode } from "./types";
 
-type Tab = "item" | "globals" | "preview";
+type Tab = "item" | "globals" | "preview" | "formula" | "form" | "animate" | "color" | "events" | "source";
+type Side = "layers" | "tools";
 
 type EditorState = {
   preset: Preset;
@@ -23,6 +29,13 @@ type EditorState = {
   tab: Tab;
   hidden: Set<string>;
   fieldUndo: boolean;
+  advanced: boolean;
+  side: Side;
+  interact: boolean;
+  scroll: number;
+  unlocked: boolean;
+  unlockAt: number;
+  dragging: boolean;
 };
 
 const state: EditorState = {
@@ -41,6 +54,13 @@ const state: EditorState = {
   tab: "item",
   hidden: new Set(),
   fieldUndo: false,
+  advanced: false,
+  side: "layers",
+  interact: false,
+  scroll: 0,
+  unlocked: false,
+  unlockAt: 0,
+  dragging: false,
 };
 
 let scene: SceneNode[] = [];
@@ -64,6 +84,7 @@ app.innerHTML = `
       <button id="blank" type="button">Blank</button>
       <button id="sample" type="button">Sample</button>
       <button id="open" type="button">Open</button>
+      <button id="advanced" type="button">Advanced</button>
       <button id="export" class="primary" type="button">Export .klwp</button>
       <input id="file" type="file" accept=".klwp,.zip,.json,application/json,application/zip" />
     </div>
@@ -71,7 +92,12 @@ app.innerHTML = `
   <div class="workspace">
     <aside class="layers">
       <div class="panel-label">Layers</div>
+      <div class="panel-switch" id="panel-switch" hidden>
+        <button type="button" data-side="layers" class="on">Layers</button>
+        <button type="button" data-side="tools">Tools</button>
+      </div>
       <div id="layer-list"></div>
+      <div id="tool-list" hidden></div>
       <div class="add-row">
         <button type="button" data-add="text">Text</button>
         <button type="button" data-add="rect">Rectangle</button>
@@ -87,12 +113,21 @@ app.innerHTML = `
         <button type="button" data-tab="globals">Globals</button>
         <button type="button" data-tab="preview">Preview</button>
       </div>
+      <div class="tabs advanced-tabs" id="advanced-tabs" hidden>
+        <button type="button" data-tab="formula">Formula</button>
+        <button type="button" data-tab="form">Form</button>
+        <button type="button" data-tab="animate">Animate</button>
+        <button type="button" data-tab="color">Color</button>
+        <button type="button" data-tab="events">Events</button>
+        <button type="button" data-tab="source">Source</button>
+      </div>
       <div id="tab-body"></div>
     </aside>
   </div>
   <footer>
     <span id="status"></span>
     <span class="spacer"></span>
+    <label><input id="interact" type="checkbox" /> Interact</label>
     <label><input id="bounds" type="checkbox" /> Bounds</label>
     <label>Zoom <input id="zoom" type="range" min="0" max="160" value="0" /></label>
     <span id="zoom-label">Fit</span>
@@ -123,12 +158,36 @@ document.querySelector("#zoom")!.addEventListener("input", (event) => {
   paintStage();
   document.querySelector("#zoom-label")!.textContent = state.zoom === 0 ? "Fit" : `${state.zoom}%`;
 });
-document.querySelector(".tabs")!.addEventListener("click", (event) => {
-  const tab = (event.target as HTMLElement).dataset.tab as Tab | undefined;
+document.querySelector(".inspector")!.addEventListener("click", (event) => {
+  const tab = (event.target as HTMLElement).closest("button")?.dataset.tab as Tab | undefined;
   if (!tab) return;
   state.tab = tab;
   paintTabs();
   paintInspector(true);
+});
+document.querySelector("#advanced")!.addEventListener("click", () => {
+  state.advanced = !state.advanced;
+  if (state.advanced) {
+    state.side = "tools";
+    if (state.tab === "item" || state.tab === "globals" || state.tab === "preview") state.tab = "formula";
+    state.status = "Advanced builder. Pick a tool, then edit its formula, form, motion, color, events, or source.";
+  } else {
+    state.side = "layers";
+    if (!["item", "globals", "preview"].includes(state.tab)) state.tab = "item";
+    state.status = "Drag items on the phone. The preview reacts to formulas.";
+  }
+  renderAll(true);
+});
+document.querySelector("#panel-switch")!.addEventListener("click", (event) => {
+  const side = (event.target as HTMLElement).dataset.side as Side | undefined;
+  if (!side) return;
+  state.side = side;
+  renderAll(true);
+});
+document.querySelector("#interact")!.addEventListener("change", (event) => {
+  state.interact = (event.target as HTMLInputElement).checked;
+  state.status = state.interact ? "Interact is on. Taps run events instead of dragging." : "Taps select and drag.";
+  paintChrome();
 });
 document.querySelector(".add-row")!.addEventListener("click", (event) => {
   const kind = (event.target as HTMLElement).dataset.add;
@@ -308,6 +367,7 @@ function renderAll(inspector = false) {
   relayout();
   paintChrome();
   paintLayers();
+  paintTools(inspector);
   paintStage();
   paintTabs();
   paintInspector(inspector);
@@ -325,9 +385,26 @@ function paintStatus() {
 }
 
 function paintTabs() {
+  document.querySelector<HTMLElement>("#advanced-tabs")!.hidden = !state.advanced;
+  document.querySelector("#advanced")!.classList.toggle("on", state.advanced);
+  document.querySelector(".workspace")!.classList.toggle("advanced", state.advanced);
+  document.querySelector<HTMLElement>("#panel-switch")!.hidden = !state.advanced;
   document.querySelectorAll<HTMLButtonElement>(".tabs button").forEach((button) => {
     button.classList.toggle("on", button.dataset.tab === state.tab);
   });
+  document.querySelectorAll<HTMLButtonElement>("#panel-switch button").forEach((button) => {
+    button.classList.toggle("on", button.dataset.side === state.side);
+  });
+}
+
+function paintTools(force = false) {
+  const list = document.querySelector<HTMLElement>("#tool-list")!;
+  const show = state.advanced && state.side === "tools";
+  list.hidden = !show;
+  layerList.hidden = show;
+  document.querySelector<HTMLElement>(".add-row")!.hidden = show;
+  if (!show || (!force && list.contains(document.activeElement))) return;
+  renderToolList(list, studio());
 }
 
 function paintLayers() {
@@ -370,6 +447,7 @@ function paintLayers() {
 
 function paintStage() {
   relayout();
+  const motionEnv = animEnv();
   const { w, h } = presetSize(state.preset);
   const scale = currentScale(w, h);
   phone.style.width = `${w * scale}px`;
@@ -400,6 +478,7 @@ function paintStage() {
       el.classList.add("bitmap");
       el.textContent = "Image";
     }
+    paintMotion(el, node, motionEnv);
     el.addEventListener("pointerdown", (event) => onNodePointerDown(event, node.path));
     stage.append(el);
   }
@@ -445,7 +524,18 @@ function onNodePointerDown(event: PointerEvent, path: number[]) {
     return;
   }
   const target = dragTarget(path);
+  const tapped = moduleAt(state.preset.preset_root, path);
+  if (state.interact && tapped?.internal_events?.length) {
+    select(path);
+    pushHistory();
+    const globals = state.preset.preset_root.globals_list ?? (state.preset.preset_root.globals_list = {});
+    const messages = tapped.internal_events.map((event) => applyEvent(event as KEvent, state.device, globals));
+    state.status = messages.filter(Boolean).join(" · ") || "Event";
+    renderAll(true);
+    return;
+  }
   select(target);
+  state.dragging = true;
   if (target.length === 0) return;
   const node = scene.find((item) => samePath(item.path, target));
   const parent = parentNode(target);
@@ -473,6 +563,7 @@ function onNodePointerDown(event: PointerEvent, path: number[]) {
     syncCoordinates();
   };
   const up = () => {
+    state.dragging = false;
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     if (history) paintInspector(true);
@@ -488,6 +579,7 @@ function onResizeDown(event: PointerEvent, path: number[], handle: string) {
   const parent = parentNode(path);
   const mod = moduleAt(state.preset.preset_root, path);
   if (!node || !parent || !mod) return;
+  state.dragging = true;
   const start = point(event);
   const origin = { x: node.x, y: node.y, w: node.w, h: node.h, size: node.fontSize };
   let history = false;
@@ -529,6 +621,7 @@ function onResizeDown(event: PointerEvent, path: number[], handle: string) {
     paintStage();
   };
   const up = () => {
+    state.dragging = false;
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     paintInspector(true);
@@ -599,19 +692,28 @@ function select(path: number[]) {
 }
 
 function addModule(kind: string) {
+  insertModule(createModule(kind));
+}
+
+function insertModule(mod: KModule, globals?: Record<string, GlobalDef>) {
   pushHistory();
-  const mod = createModule(kind);
+  if (globals) {
+    const list = state.preset.preset_root.globals_list ?? (state.preset.preset_root.globals_list = {});
+    for (const [key, value] of Object.entries(globals)) {
+      if (!list[key]) list[key] = structuredClone(value);
+    }
+  }
+  const copy = structuredClone(mod);
   const { parent, base } = containerForInsert();
   parent.viewgroup_items = parent.viewgroup_items ?? [];
-  const offset = 24 + (parent.viewgroup_items.length % 6) * 18;
-  if (parent.internal_type !== "RootLayerModule") {
-    mod.position_padding_left = offset;
-    mod.position_padding_top = offset;
-  }
-  parent.viewgroup_items.push(mod);
+  const offset = 18 * (parent.viewgroup_items.length % 5);
+  if (typeof copy.position_padding_left === "number") copy.position_padding_left += offset;
+  if (typeof copy.position_padding_top === "number") copy.position_padding_top += offset;
+  parent.viewgroup_items.push(copy);
   state.selection = base.concat(parent.viewgroup_items.length - 1);
-  state.tab = "item";
-  state.status = `Added ${mod.internal_title}`;
+  const advancedTab = ["formula", "form", "animate", "color", "events", "source"].includes(state.tab);
+  state.tab = state.advanced ? (advancedTab ? state.tab : "formula") : "item";
+  state.status = `Added ${copy.internal_title || "item"}`;
   renderAll(true);
 }
 
@@ -752,8 +854,15 @@ function moveZ(direction: number) {
 function paintInspector(force: boolean) {
   if (!force && tabBody.contains(document.activeElement)) return;
   tabBody.replaceChildren();
+  const host = studio();
   if (state.tab === "globals") paintGlobals();
   else if (state.tab === "preview") paintPreview();
+  else if (state.tab === "formula") paintFormula(tabBody, host);
+  else if (state.tab === "form") paintForm(tabBody, host);
+  else if (state.tab === "animate") paintAnimate(tabBody, host);
+  else if (state.tab === "color") paintColor(tabBody, host);
+  else if (state.tab === "events") paintEvents(tabBody, host);
+  else if (state.tab === "source") paintSource(tabBody, host);
   else paintItem();
 }
 
@@ -1248,4 +1357,148 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 }
 
+function currentCtx() {
+  state.device.now = deviceNow(state.device);
+  const { w, h } = presetSize(state.preset);
+  return makeCtx({
+    device: state.device,
+    presetW: w,
+    presetH: h,
+    globalChain: [state.preset.preset_root.globals_list ?? {}],
+  });
+}
+
+function animEnv(): AnimEnv {
+  const ctx = currentCtx();
+  return {
+    timeSec: performance.now() / 1000,
+    scroll: state.scroll,
+    unlocked: state.unlocked,
+    unlockAge: state.unlocked ? (performance.now() - state.unlockAt) / 1000 : 0,
+    formula: (source) => {
+      const value = evalLoose(source, ctx);
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    },
+    flag: (name) => {
+      const value = globalValue(ctx, name, 0);
+      if (typeof value === "number") return value !== 0;
+      const text = String(value ?? "").trim().toLowerCase();
+      return text !== "" && text !== "0" && text !== "false" && text !== "off";
+    },
+  };
+}
+
+function paintMotion(el: HTMLElement, node: SceneNode, env: AnimEnv) {
+  let frame: AnimFrame = { ...REST_FRAME };
+  if (!(state.dragging && samePath(node.path, state.selection))) {
+    for (let depth = 1; depth <= node.path.length; depth++) {
+      const ancestor = scene.find((item) => samePath(item.path, node.path.slice(0, depth)));
+      if (ancestor) frame = combineFrames(frame, animationFrame(ancestor.mod.internal_animations, env));
+    }
+  }
+  if (isRest(frame)) {
+    el.style.opacity = "";
+    el.style.transform = "";
+    return;
+  }
+  el.style.opacity = String(frame.opacity);
+  el.style.transform = frameTransform(frame);
+  el.style.transformOrigin = "center";
+}
+
+function previewLive(touch = true) {
+  if (touch) state.dirty = true;
+  relayout();
+  paintStage();
+  paintLayers();
+  paintChrome();
+}
+
+function readProp(mod: KModule | null, key: string): { mode: "value" | "formula" | "global"; raw: string; value: string } {
+  if (!mod) return { mode: "value", raw: "", value: "" };
+  const ctx = currentCtx();
+  const toggle = mod.internal_toggles?.[key];
+  if (Number(toggle) === 100 && mod.internal_globals?.[key]) {
+    const raw = mod.internal_globals[key]!;
+    return { mode: "global", raw, value: stringify(globalValue(ctx, raw, "")) };
+  }
+  const formula = mod.internal_formulas?.[key];
+  if (typeof formula === "string" && (toggle == null || Number(toggle) === 10)) {
+    return { mode: "formula", raw: formula, value: stringify(evalLoose(formula, ctx)) };
+  }
+  if (key === "text_expression") {
+    const raw = String(mod.text_expression ?? "");
+    return { mode: "value", raw, value: raw.includes("$") ? stringify(evalLoose(raw, ctx)) : raw };
+  }
+  const raw = mod[key] == null ? "" : String(mod[key]);
+  return { mode: "value", raw, value: raw };
+}
+
+function studio(): StudioHost {
+  const mod = moduleAt(state.preset.preset_root, state.selection);
+  return {
+    preset: state.preset,
+    module: mod,
+    device: state.device,
+    scroll: state.scroll,
+    setScroll: (value) => {
+      state.scroll = value;
+      previewLive(false);
+    },
+    unlocked: state.unlocked,
+    setUnlocked: (value) => {
+      state.unlocked = value;
+      if (value) state.unlockAt = performance.now();
+      previewLive(false);
+    },
+    pushHistory,
+    refresh: () => renderAll(true),
+    preview: () => previewLive(true),
+    status: (message) => {
+      state.status = message;
+      paintChrome();
+    },
+    insertTool: (tool: Tool) => insertModule(structuredClone(tool.module), tool.globals),
+    evalSource: (source) => {
+      try {
+        return stringify(evalLoose(source, currentCtx()));
+      } catch {
+        return "";
+      }
+    },
+    animEnv,
+    replaceModule: (next) => {
+      const loc = parentAt(state.preset.preset_root, state.selection);
+      if (loc?.parent.viewgroup_items) loc.parent.viewgroup_items[loc.index] = next;
+      else if (state.selection.length === 0) state.preset.preset_root = next;
+      else return;
+      state.status = "Applied source";
+      renderAll(true);
+    },
+    replacePreset: (next) => {
+      if (!next?.preset_root) {
+        state.status = "Preset source needs a preset_root.";
+        paintChrome();
+        return;
+      }
+      state.preset = next;
+      state.selection = [];
+      state.status = "Applied preset source";
+      renderAll(true);
+    },
+    readProp: (key) => readProp(mod, key),
+  };
+}
+
+function tickMotion() {
+  const env = animEnv();
+  for (const node of scene) {
+    const el = stage.querySelector<HTMLElement>(`[data-path="${pathKey(node.path)}"]`);
+    if (el) paintMotion(el, node, env);
+  }
+  requestAnimationFrame(tickMotion);
+}
+
 renderAll(true);
+requestAnimationFrame(tickMotion);
