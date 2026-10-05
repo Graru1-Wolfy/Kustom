@@ -6,16 +6,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  publish:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,18 +25,21 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-        env:
-          VITE_BASE: /Kustom/
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Put the built editor at the site root
+        run: |
+          rm -rf assets
+          mkdir -p assets
+          cp dist/assets/* assets/
+          cp dist/dev.html index.html
+          touch .nojekyll
+      - name: Commit the site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html assets .nojekyll
+          if git diff --cached --quiet; then
+            echo "Site already matches this build."
+          else
+            git commit -m "Publish editor site [skip ci]"
+            git push
+          fi
