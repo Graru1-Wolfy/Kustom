@@ -15,7 +15,7 @@ The dev server runs at http://localhost:5173.
 ## What you can do
 
 - Open `.klwp`, `.klwp.zip`, preset JSON, or a Kustom clipboard clip. Fonts packed in the archive are used for the preview.
-- Drag items, resize shapes, edit text and colors, and reorder layers.
+- Drag items, resize shapes, edit text and colors, and reorder layers. Undo and redo sit in the toolbar, and a burst of arrow-key nudges is a single undo. Double-click text to edit it. Keys lists the shortcuts. Layer search and tool search find an item by name.
 - Edit globals (colors, numbers, text, switches). Items linked to a global update together.
 - Scrub the preview: battery, weather, music, time of day, and the other values formulas read.
 - Export `.klwp`. The original archive assets are kept, and `preset.json` is replaced.

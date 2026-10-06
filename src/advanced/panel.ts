@@ -46,8 +46,19 @@ const EVENT_RECIPES: { name: string; event: KEvent }[] = [
   { name: "Link", event: { type: "SINGLE_TAP", action: "OPEN_URL", url: "https://kustom.rocks" } },
 ];
 
+let toolQuery = "";
+
 export function renderToolList(root: HTMLElement, host: StudioHost) {
   root.replaceChildren();
+  const search = input(toolQuery);
+  search.type = "search";
+  search.placeholder = "Find a tool";
+  search.className = "layer-filter";
+  search.addEventListener("input", () => {
+    toolQuery = search.value;
+    paintGroups(root.querySelector(".tool-groups")!, host, toolQuery);
+  });
+  root.append(search);
   const save = document.createElement("div");
   save.className = "tool-save";
   const name = input("");
@@ -72,11 +83,26 @@ export function renderToolList(root: HTMLElement, host: StudioHost) {
   });
   save.append(name, group, button);
   root.append(save);
+  const groups = document.createElement("div");
+  groups.className = "tool-groups";
+  root.append(groups);
+  paintGroups(groups, host, toolQuery);
+}
+
+function paintGroups(root: HTMLElement, host: StudioHost, query: string) {
+  root.replaceChildren();
+  const needle = query.toLowerCase().replace(/[^a-z0-9]/g, "");
   const groups = new Map<string, Tool[]>();
   for (const item of [...builtinTools(), ...loadCustomTools()]) {
+    const hay = `${item.group} ${item.name} ${item.blurb}`.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (needle && !hay.includes(needle)) continue;
     const list = groups.get(item.group) ?? [];
     list.push(item);
     groups.set(item.group, list);
+  }
+  if (!groups.size) {
+    note(root, "No tools match that search.");
+    return;
   }
   for (const [title, items] of groups) {
     const block = document.createElement("section");

@@ -82,13 +82,26 @@ app.innerHTML = `
     <div class="brand"><span class="mark"></span><div><strong>Kustom</strong><em>Live wallpaper</em></div></div>
     <div class="filename" id="filename"></div>
     <div class="toolbar">
+      <button id="undo" type="button" title="Undo (Ctrl+Z)" disabled>Undo</button>
+      <button id="redo" type="button" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
       <button id="blank" type="button">Blank</button>
       <div class="preset-wrap">
         <button id="presets" type="button">Presets</button>
         <div id="preset-menu" class="preset-menu" hidden></div>
       </div>
       <button id="open" type="button">Open</button>
-      <button id="advanced" type="button">Advanced</button>
+      <button id="advanced" type="button" title="Tools, formulas, motion, and events">Advanced</button>
+      <div class="preset-wrap">
+        <button id="help" type="button" title="Keyboard shortcuts">Keys</button>
+        <div id="help-menu" class="preset-menu help-menu" hidden>
+          <p><b>Drag</b> moves an item. Shift snaps to 10px.</p>
+          <p><b>Arrows</b> nudge. Shift+arrows move 10px.</p>
+          <p><b>Delete</b> removes. <b>Ctrl+D</b> duplicates.</p>
+          <p><b>Ctrl+Z</b> undoes. <b>Ctrl+Shift+Z</b> redoes.</p>
+          <p><b>Double-click</b> text to edit it. <b>Esc</b> clears the selection.</p>
+          <p><b>Interact</b> makes a tap run the item's event.</p>
+        </div>
+      </div>
       <button id="export" class="primary" type="button">Export .klwp</button>
       <input id="file" type="file" accept=".klwp,.zip,.json,application/json,application/zip" />
     </div>
@@ -100,6 +113,7 @@ app.innerHTML = `
         <button type="button" data-side="layers" class="on">Layers</button>
         <button type="button" data-side="tools">Tools</button>
       </div>
+      <input id="layer-filter" class="layer-filter" type="search" placeholder="Find a layer" autocomplete="off" />
       <div id="layer-list"></div>
       <div id="tool-list" hidden></div>
       <div class="add-row">
@@ -134,7 +148,7 @@ app.innerHTML = `
     <label><input id="interact" type="checkbox" /> Interact</label>
     <label><input id="bounds" type="checkbox" /> Bounds</label>
     <label>Zoom <input id="zoom" type="range" min="0" max="160" value="0" /></label>
-    <span id="zoom-label">Fit</span>
+    <button id="zoom-label" type="button" title="Fit the phone to the window">Fit</button>
   </footer>
 `;
 
@@ -163,6 +177,7 @@ for (const entry of presetCatalog()) {
 }
 document.querySelector("#presets")!.addEventListener("click", (event) => {
   event.stopPropagation();
+  helpMenu.hidden = true;
   presetMenu.hidden = !presetMenu.hidden;
   const current = state.preset.preset_info?.title;
   for (const button of Array.from(presetMenu.querySelectorAll("button"))) {
@@ -170,8 +185,20 @@ document.querySelector("#presets")!.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("click", (event) => {
-  if (!(event.target as HTMLElement).closest(".preset-wrap")) presetMenu.hidden = true;
+  const wrap = (event.target as HTMLElement).closest(".preset-wrap");
+  if (!wrap) {
+    presetMenu.hidden = true;
+    helpMenu.hidden = true;
+  }
 });
+const helpMenu = document.querySelector<HTMLDivElement>("#help-menu")!;
+document.querySelector("#help")!.addEventListener("click", (event) => {
+  event.stopPropagation();
+  helpMenu.hidden = !helpMenu.hidden;
+  presetMenu.hidden = true;
+});
+document.querySelector("#undo")!.addEventListener("click", () => undo());
+document.querySelector("#redo")!.addEventListener("click", () => redo());
 document.querySelector("#open")!.addEventListener("click", () => fileInput.click());
 document.querySelector("#export")!.addEventListener("click", () => exportKlwp());
 fileInput.addEventListener("change", () => {
@@ -183,11 +210,17 @@ document.querySelector("#bounds")!.addEventListener("change", (event) => {
   state.showBounds = (event.target as HTMLInputElement).checked;
   paintStage();
 });
-document.querySelector("#zoom")!.addEventListener("input", (event) => {
-  state.zoom = Number((event.target as HTMLInputElement).value);
+const zoomInput = document.querySelector<HTMLInputElement>("#zoom")!;
+const zoomLabel = document.querySelector<HTMLButtonElement>("#zoom-label")!;
+function setZoom(value: number) {
+  state.zoom = Math.max(0, Math.min(160, value));
+  zoomInput.value = String(state.zoom);
+  zoomLabel.textContent = state.zoom === 0 ? "Fit" : `${state.zoom}%`;
   paintStage();
-  document.querySelector("#zoom-label")!.textContent = state.zoom === 0 ? "Fit" : `${state.zoom}%`;
-});
+}
+zoomInput.addEventListener("input", () => setZoom(Number(zoomInput.value)));
+zoomLabel.addEventListener("click", () => setZoom(0));
+document.querySelector("#layer-filter")!.addEventListener("input", () => paintLayers());
 document.querySelector(".inspector")!.addEventListener("click", (event) => {
   const tab = (event.target as HTMLElement).closest("button")?.dataset.tab as Tab | undefined;
   if (!tab) return;
@@ -365,6 +398,17 @@ function onKey(event: KeyboardEvent) {
     redo();
     return;
   }
+  if ((event.metaKey || event.ctrlKey) && (event.key === "=" || event.key === "+" || event.key === "-")) {
+    event.preventDefault();
+    const current = state.zoom || Math.round(currentScale(presetSize(state.preset).w, presetSize(state.preset).h) * 100);
+    setZoom(event.key === "-" ? current - 10 : current + 10);
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && event.key === "0") {
+    event.preventDefault();
+    setZoom(0);
+    return;
+  }
   if (typing) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") {
     event.preventDefault();
@@ -376,8 +420,15 @@ function onKey(event: KeyboardEvent) {
     removeSelected();
     return;
   }
-  if (event.key === "Escape") select([]);
+  if (event.key === "Escape") {
+    select([]);
+    presetMenu.hidden = true;
+    helpMenu.hidden = true;
+  }
   const nudge = event.shiftKey ? 10 : 1;
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown") {
+    event.preventDefault();
+  }
   if (event.key === "ArrowLeft") nudgeSelected(-nudge, 0);
   if (event.key === "ArrowRight") nudgeSelected(nudge, 0);
   if (event.key === "ArrowUp") nudgeSelected(0, -nudge);
@@ -407,7 +458,11 @@ function paintChrome() {
   const info = state.preset.preset_info;
   const { w, h } = presetSize(state.preset);
   document.querySelector("#filename")!.innerHTML = `<b>${escapeHtml(info?.title || "Untitled")}</b> · ${escapeHtml(state.filename)}${state.dirty ? " · edited" : ""}`;
-  document.querySelector("#status")!.textContent = `${state.status}  ·  ${w}×${h}  ·  ${countModules(state.preset.preset_root)} items`;
+  const selected = selectedNode();
+  const who = selected && selected.kind !== "root" ? selected.title : "Screen";
+  document.querySelector("#status")!.textContent = `${who}  ·  ${state.status}  ·  ${w}×${h}  ·  ${countModules(state.preset.preset_root)} items`;
+  document.querySelector<HTMLButtonElement>("#undo")!.disabled = state.undo.length === 0;
+  document.querySelector<HTMLButtonElement>("#redo")!.disabled = state.redo.length === 0;
 }
 
 function paintStatus() {
@@ -432,15 +487,30 @@ function paintTools(force = false) {
   const show = state.advanced && state.side === "tools";
   list.hidden = !show;
   layerList.hidden = show;
+  document.querySelector<HTMLElement>("#layer-filter")!.hidden = show;
   document.querySelector<HTMLElement>(".add-row")!.hidden = show;
   if (!show || (!force && list.contains(document.activeElement))) return;
   renderToolList(list, studio());
 }
 
+function normalizeSearch(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function paintLayers() {
   const scroll = layerList.scrollTop;
+  const query = normalizeSearch(document.querySelector<HTMLInputElement>("#layer-filter")?.value ?? "");
   layerList.replaceChildren();
+  let shown = 0;
+  const matches = (mod: KModule): boolean => {
+    const title = normalizeSearch(String(mod.internal_title || ""));
+    const kind = normalizeSearch(String(mod.internal_type || ""));
+    if (!query || title.includes(query) || kind.includes(query)) return true;
+    return (mod.viewgroup_items ?? []).some(matches);
+  };
   const walk = (mod: KModule, path: number[], depth: number) => {
+    if (query && !matches(mod)) return;
+    shown++;
     const key = pathKey(path);
     const node = scene.find((item) => pathKey(item.path) === key);
     const row = document.createElement("button");
@@ -472,6 +542,12 @@ function paintLayers() {
     mod.viewgroup_items?.forEach((child, index) => walk(child, path.concat(index), depth + 1));
   };
   walk(state.preset.preset_root, [], 0);
+  if (!shown) {
+    const empty = document.createElement("p");
+    empty.className = "hint layer-empty";
+    empty.textContent = "No layers match that search.";
+    layerList.append(empty);
+  }
   layerList.scrollTop = scroll;
 }
 
@@ -497,6 +573,7 @@ function paintStage() {
     el.style.width = `${Math.max(node.w, 1)}px`;
     el.style.height = `${Math.max(node.h, 1)}px`;
     el.dataset.path = pathKey(node.path);
+    el.title = node.title;
     if (node.kind === "text") {
       el.style.fontSize = `${node.fontSize}px`;
       el.style.fontFamily = node.fontFamily;
@@ -542,8 +619,34 @@ function currentScale(w: number, h: number): number {
   return Math.max(0.15, Math.min(availW / w, availH / h));
 }
 
+let lastPointer = { key: "", time: 0, x: 0, y: 0 };
+
 function onNodePointerDown(event: PointerEvent, path: number[]) {
   event.stopPropagation();
+  const key = pathKey(path);
+  const now = performance.now();
+  const repeated =
+    key === lastPointer.key &&
+    now - lastPointer.time < 450 &&
+    Math.hypot(event.clientX - lastPointer.x, event.clientY - lastPointer.y) < 8;
+  lastPointer = { key, time: now, x: event.clientX, y: event.clientY };
+  if (repeated || event.detail >= 2) {
+    event.preventDefault();
+    const tapped = moduleAt(state.preset.preset_root, path);
+    if (tapped?.internal_type === "TextModule") {
+      state.selection = path;
+      state.tab = "item";
+      renderAll(true);
+      window.setTimeout(() => {
+        const area = tabBody.querySelector("textarea");
+        if (area instanceof HTMLTextAreaElement) {
+          area.focus();
+          area.select();
+        }
+      }, 0);
+    }
+    return;
+  }
   if (event.altKey) {
     const hits = document
       .elementsFromPoint(event.clientX, event.clientY)
@@ -566,6 +669,7 @@ function onNodePointerDown(event: PointerEvent, path: number[]) {
   }
   select(target);
   state.dragging = true;
+  document.body.classList.add("dragging");
   if (target.length === 0) return;
   const node = scene.find((item) => samePath(item.path, target));
   const parent = parentNode(target);
@@ -594,6 +698,7 @@ function onNodePointerDown(event: PointerEvent, path: number[]) {
   };
   const up = () => {
     state.dragging = false;
+    document.body.classList.remove("dragging");
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     if (history) paintInspector(true);
@@ -610,6 +715,7 @@ function onResizeDown(event: PointerEvent, path: number[], handle: string) {
   const mod = moduleAt(state.preset.preset_root, path);
   if (!node || !parent || !mod) return;
   state.dragging = true;
+  document.body.classList.add("dragging");
   const start = point(event);
   const origin = { x: node.x, y: node.y, w: node.w, h: node.h, size: node.fontSize };
   let history = false;
@@ -652,6 +758,7 @@ function onResizeDown(event: PointerEvent, path: number[], handle: string) {
   };
   const up = () => {
     state.dragging = false;
+    document.body.classList.remove("dragging");
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     paintInspector(true);
@@ -694,15 +801,22 @@ function writeTextSize(mod: KModule, size: number) {
   setLiteral(mod, "text_size", rounded);
 }
 
+let lastNudge = 0;
+
 function nudgeSelected(dx: number, dy: number) {
   const path = dragTarget(state.selection);
   const mod = moduleAt(state.preset.preset_root, path);
   const node = scene.find((item) => samePath(item.path, path));
   const parent = parentNode(path);
   if (!mod || !node || !parent || path.length === 0) return;
-  pushHistory();
+  const now = performance.now();
+  if (now - lastNudge > 500) pushHistory();
+  lastNudge = now;
   writePosition(mod, parent, node.x - parent.x + dx, node.y - parent.y + dy, node.w, node.h, 1);
-  renderAll(true);
+  relayout();
+  paintStage();
+  syncCoordinates();
+  paintChrome();
 }
 
 function dragTarget(path: number[]): number[] {
@@ -717,8 +831,12 @@ function dragTarget(path: number[]): number[] {
 
 function select(path: number[]) {
   state.selection = path;
-  state.tab = state.tab === "preview" ? "preview" : "item";
+  const basic = ["item", "globals", "preview"];
+  const advancedTabs = ["formula", "form", "animate", "color", "events", "source"];
+  const allowed = state.advanced ? basic.concat(advancedTabs) : basic;
+  if (!allowed.includes(state.tab)) state.tab = state.advanced ? "formula" : "item";
   renderAll(true);
+  layerList.querySelector(".layer.on")?.scrollIntoView({ block: "nearest" });
 }
 
 function addModule(kind: string) {
@@ -910,7 +1028,7 @@ function paintItem() {
         field("Height", numberInput(Number(info.height ?? 1920), (value) => (info.height = value))),
       ),
     );
-    note("The root is the screen. Add text and shapes from the layer panel.");
+    note("This is the screen. Click an item, or add one from the buttons under the layers. Arrows nudge, Delete removes, and Ctrl+D duplicates.");
     return;
   }
   const actions = document.createElement("div");
@@ -922,6 +1040,10 @@ function paintItem() {
     action("Forward", () => moveZ(1)),
   );
   tabBody.append(actions);
+  const heading = document.createElement("h3");
+  heading.className = "item-title";
+  heading.textContent = node.title;
+  tabBody.append(heading);
   tabBody.append(field("Name", textInput(String(mod.internal_title ?? ""), (value) => (mod.internal_title = value))));
   const parent = parentNode(node.path);
   if (parent) {
