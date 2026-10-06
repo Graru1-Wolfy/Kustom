@@ -58,31 +58,33 @@ function glassPreset(): Preset {
   const muted = "#FF9BB0C9";
   const accent = "#FF8FD0FF";
   const disc = overlap("Disc", [
-    shape("Plate", "CIRCLE", 300, 300, "#FF182438"),
-    anim(ring("Ring", "$if(mi(state)=\"playing\", 72, 12)$", accent, 300, 18), {
+    shape("Plate", "CIRCLE", 320, 320, "#FF1C2A48"),
+    stroke("Groove", 320, "#66486880", 26),
+    anim(ring("Ring", '$if(mi(state)="playing", 78, 16)$', accent, 320, 26), {
       type: "LOOP",
       action: "ROTATE",
       duration: 8,
       angle: 360,
       ease: "LINEAR",
     }),
+    shape("Hub", "CIRCLE", 92, 92, "#FF10182C", 0, { position_anchor: "CENTER" }),
     event(
-      text("Play", '$if(mi(state)="playing", "PAUSE", "PLAY")$', 26, ink, { position_anchor: "CENTER" }),
+      text("Play", '$if(mi(state)="playing", "STOP", "PLAY")$', 24, ink, { position_anchor: "CENTER" }),
       { type: "SINGLE_TAP", action: "MUSIC", music_action: "TOGGLE" },
     ),
   ]);
   const controls = stack(
     "Controls",
     "HORIZONTAL",
-    16,
+    20,
     [
-      pill("Prev", "PREV", 168, "#FF243044", ink, { type: "SINGLE_TAP", action: "MUSIC", music_action: "PREV" }),
-      pill("Play", '$if(mi(state)="playing", "PAUSE", "PLAY")$', 220, accent, "#FF071018", {
+      pill("Prev", "PREV", 180, "#FF243044", ink, { type: "SINGLE_TAP", action: "MUSIC", music_action: "PREV" }),
+      pill("Play", '$if(mi(state)="playing", "STOP", "PLAY")$', 200, accent, "#FF071018", {
         type: "SINGLE_TAP",
         action: "MUSIC",
         music_action: "TOGGLE",
       }),
-      pill("Next", "NEXT", 168, "#FF243044", ink, { type: "SINGLE_TAP", action: "MUSIC", music_action: "NEXT" }),
+      pill("Next", "NEXT", 180, "#FF243044", ink, { type: "SINGLE_TAP", action: "MUSIC", music_action: "NEXT" }),
     ],
   );
   return screen(
@@ -101,8 +103,8 @@ function glassPreset(): Preset {
       at(text("Title", "$mi(title)$", 84, ink), 80, 260),
       at(text("Artist", "$mi(artist)$", 36, muted), 84, 380),
       at(text("State", "$tc(up, mi(state))$", 24, muted), 84, 450),
-      at(disc, 390, 540),
-      at(controls, 150, 940),
+      at(disc, 380, 530),
+      at(controls, 240, 940),
       at(text("Hint", "Turn on Interact, then tap play or next.", 24, muted), 84, 1100),
     ],
   );
@@ -130,7 +132,12 @@ function forecastPreset(): Preset {
       at(shape("Glow", "CIRCLE", 520, 520, "#33FFC46B"), 680, -80),
       at(text("Place", "$li(loc)$", 28, "#FFCDBBA6"), 84, 180),
       at(
-        text("Greeting", '$if(df(H)<12, "GOOD MORNING", df(H)<18, "GOOD AFTERNOON", "GOOD EVENING")$', 26, accent),
+        text(
+          "Greeting",
+          '$if(df(H)<5, "GOOD NIGHT", df(H)<12, "GOOD MORNING", df(H)<18, "GOOD AFTERNOON", "GOOD EVENING")$',
+          26,
+          accent,
+        ),
         84,
         240,
       ),
@@ -255,11 +262,14 @@ function screen(
 }
 
 function day(label: string, index: number, accent: string): KModule {
-  return stack(label, "VERTICAL", 8, [
-    text("Day", label, 22, "#FFCDBBA6"),
-    text("Sky", `$tc(cap, wf(cond, ${index}))$`, 26, "#FFFFF6EA"),
-    text("High", `$wf(max, ${index})$°`, 36, accent),
-    text("Low", `$wf(min, ${index})$°`, 24, "#FFCDBBA6"),
+  return overlap(label, [
+    shape("Slot", "RECT", 168, 4, "#00000000"),
+    stack(label, "VERTICAL", 10, [
+      text("Day", label, 22, "#FFCDBBA6"),
+      text("Sky", `$tc(cap, wf(cond, ${index}))$`, 24, "#FFFFF6EA"),
+      text("High", `$wf(max, ${index})$°`, 34, accent),
+      text("Low", `$wf(min, ${index})$°`, 22, "#FFCDBBA6"),
+    ]),
   ]);
 }
 
@@ -295,8 +305,15 @@ function meter(title: string, widthFormula: string, caption: string): KModule {
 }
 
 function labeledRing(title: string, progress: string, caption: string, literal: boolean): KModule {
-  const dial = ring(title, progress, LIME, 220, 16, literal);
-  return overlap(title, [dial, text("Value", caption, 32, INK, { position_anchor: "CENTER" })]);
+  return overlap(title, [
+    stroke("Track", 220, "#FF2A3328", 18),
+    ring(title, progress, LIME, 220, 18, literal),
+    text("Value", caption, 32, INK, { position_anchor: "CENTER" }),
+  ]);
+}
+
+function stroke(title: string, size: number, color: string, width: number): KModule {
+  return shape(title, "CIRCLE", size, size, color, 0, { paint_style: "STROKE", paint_stroke: width });
 }
 
 function ring(title: string, progress: string, color: string, size: number, thickness: number, literal = false): KModule {
@@ -335,8 +352,8 @@ function background(color: string): KModule {
   });
 }
 
-function shape(title: string, kind: string, w: number, h: number, color: string, corners = 0): KModule {
-  return {
+function shape(title: string, kind: string, w: number, h: number, color: string, corners = 0, extras: Partial<KModule> = {}): KModule {
+  return placed({
     internal_type: "ShapeModule",
     internal_title: title,
     shape_type: kind,
@@ -344,24 +361,32 @@ function shape(title: string, kind: string, w: number, h: number, color: string,
     shape_height: h,
     shape_corners: corners,
     paint_color: color,
-    position_anchor: "TOPLEFT",
-    position_padding_left: 0,
-    position_padding_top: 0,
-  };
+    ...extras,
+  });
 }
 
 function text(title: string, expression: string, size: number, color: string, extras: Partial<KModule> = {}): KModule {
-  return {
+  return placed({
     internal_type: "TextModule",
     internal_title: title,
     text_expression: expression,
     text_size: size,
     paint_color: color,
-    position_anchor: "TOPLEFT",
-    position_padding_left: 0,
-    position_padding_top: 0,
     ...extras,
-  };
+  });
+}
+
+function placed(mod: KModule): KModule {
+  const anchor = String(mod.position_anchor ?? "TOPLEFT").toUpperCase();
+  mod.position_anchor = anchor;
+  if (anchor === "CENTER") {
+    delete mod.position_padding_left;
+    delete mod.position_padding_top;
+    return mod;
+  }
+  if (mod.position_padding_left == null) mod.position_padding_left = 0;
+  if (mod.position_padding_top == null) mod.position_padding_top = 0;
+  return mod;
 }
 
 function overlap(title: string, items: KModule[]): KModule {

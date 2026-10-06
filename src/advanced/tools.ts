@@ -246,10 +246,7 @@ function toggle(): KModule {
   pill.internal_formulas = { paint_color: '$if(gv(on), "#FFB6F27C", "#FF2C352A")$' };
   pill.internal_toggles = { paint_color: 10 };
   pill.internal_events = [{ type: "SINGLE_TAP", action: "SWITCH_GLOBAL", switch: "on" }];
-  const label = text("Label", '$if(gv(on), "ON", "OFF")$', 28, "#FF172000", {}, 0);
-  label.position_anchor = "CENTER";
-  label.position_padding_left = 0;
-  label.position_padding_top = 0;
+  const label = center(text("Label", '$if(gv(on), "ON", "OFF")$', 28, "#FF172000", {}, 0));
   label.internal_formulas = { paint_color: '$if(gv(on), "#FF172000", "#FFF4F7EF")$' };
   label.internal_toggles = { paint_color: 10 };
   label.internal_events = [{ type: "SINGLE_TAP", action: "SWITCH_GLOBAL", switch: "on" }];
@@ -298,7 +295,7 @@ function clockFace(): KModule {
         progress_progress: "HOURS",
         position_anchor: "TOPLEFT",
       },
-      text("Time", "$df(HH:mm)$", 48, "#FFF4F7EF", { position_anchor: "CENTER" }, 0),
+      center(text("Time", "$df(HH:mm)$", 48, "#FFF4F7EF", {}, 0)),
     ],
   };
 }
@@ -348,7 +345,7 @@ function forecastDay(): KModule {
 
 function noticeBadge(): KModule {
   const badge = shape("Badge", "CIRCLE", 84, 84, "#FFFF8A7A", 0, 0);
-  const count = text("Count", "$ni(count)$", 32, "#FF1A100E", { position_anchor: "CENTER" }, 0);
+  const count = center(text("Count", "$ni(count)$", 32, "#FF1A100E", {}, 0));
   const group: KModule = {
     internal_type: "OverlapLayerModule",
     internal_title: "Notices",
@@ -397,6 +394,15 @@ function themePicker(): KModule {
     position_padding_top: 80,
     viewgroup_items: [dot("Lime", "lime", "#FFB6F27C", 0), dot("Rose", "rose", "#FFFF8FA3", 96), dot("Ice", "ice", "#FF9FD7FF", 192), label],
   };
+}
+
+function center(mod: KModule): KModule {
+  mod.position_anchor = "CENTER";
+  delete mod.position_padding_left;
+  delete mod.position_padding_top;
+  delete mod.position_padding_right;
+  delete mod.position_padding_bottom;
+  return mod;
 }
 
 function readStorage(): Tool[] | null {

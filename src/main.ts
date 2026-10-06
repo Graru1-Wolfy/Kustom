@@ -156,9 +156,8 @@ for (const entry of presetCatalog()) {
   blurb.textContent = entry.blurb;
   button.append(title, blurb);
   button.addEventListener("click", () => {
-    replaceDocument(entry.build(), {}, entry.filename);
+    replaceDocument(entry.build(), {}, entry.filename, `${entry.title}. ${entry.blurb}`);
     presetMenu.hidden = true;
-    if (state.filename === entry.filename) state.status = `${entry.title}. ${entry.blurb}`;
   });
   presetMenu.append(button);
 }
@@ -246,7 +245,7 @@ stage.addEventListener("pointerdown", (event) => {
   if (event.target === stage) select([]);
 });
 
-function replaceDocument(preset: Preset, assets: Record<string, Uint8Array>, filename: string) {
+function replaceDocument(preset: Preset, assets: Record<string, Uint8Array>, filename: string, status?: string) {
   if (state.dirty && !confirm("Discard unsaved changes?")) return;
   state.preset = preset;
   state.assets = assets;
@@ -256,7 +255,7 @@ function replaceDocument(preset: Preset, assets: Record<string, Uint8Array>, fil
   state.redo = [];
   state.hidden.clear();
   state.dirty = false;
-  state.status = `Opened ${filename}`;
+  state.status = status ?? `Opened ${filename}`;
   void loadFonts();
   renderAll(true);
 }
