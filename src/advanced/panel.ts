@@ -31,6 +31,20 @@ const EASES = ["EASE", "LINEAR", "EASEIN", "EASEOUT"];
 const GESTURES = ["SINGLE_TAP", "DOUBLE_TAP", "LONG_PRESS"];
 const EVENT_ACTIONS = ["SWITCH_GLOBAL", "SET_GLOBAL", "MUSIC", "OPEN_URL", "LAUNCH_APP"];
 const MUSIC = ["TOGGLE", "PLAY", "PAUSE", "NEXT", "PREV", "OPEN_APP"];
+const MOTION_RECIPES: { name: string; anim: Record<string, unknown> }[] = [
+  { name: "Pulse", anim: { type: "LOOP", action: "SCALE", duration: 2.2, amount: 82, ease: "EASE" } },
+  { name: "Spin", anim: { type: "LOOP", action: "ROTATE", duration: 6, angle: 360, ease: "LINEAR" } },
+  { name: "Blink", anim: { type: "LOOP", action: "FADE", duration: 1.8, ease: "EASE" } },
+  { name: "Unlock", anim: { type: "UNLOCK", action: "FADE", duration: 0.7, ease: "EASEOUT" } },
+  { name: "Drift", anim: { type: "SCROLL", action: "SCROLL", amount: 140, angle: 0, ease: "LINEAR" } },
+  { name: "On switch", anim: { type: "SWITCH", action: "FADE", switch: "on", duration: 0.35, ease: "EASE" } },
+];
+const EVENT_RECIPES: { name: string; event: KEvent }[] = [
+  { name: "Toggle", event: { type: "SINGLE_TAP", action: "SWITCH_GLOBAL", switch: "on" } },
+  { name: "Play", event: { type: "SINGLE_TAP", action: "MUSIC", music_action: "TOGGLE" } },
+  { name: "Next", event: { type: "SINGLE_TAP", action: "MUSIC", music_action: "NEXT" } },
+  { name: "Link", event: { type: "SINGLE_TAP", action: "OPEN_URL", url: "https://kustom.rocks" } },
+];
 
 export function renderToolList(root: HTMLElement, host: StudioHost) {
   root.replaceChildren();
@@ -123,6 +137,13 @@ export function paintAnimate(root: HTMLElement, host: StudioHost) {
   const mod = needItem(root, host);
   if (!mod) return;
   note(root, "Animations use KLWP's internal_animations list. Loop and formula motions play on the phone.");
+  recipes(root, "Recipes", MOTION_RECIPES, (item) => {
+    host.pushHistory();
+    if (!Array.isArray(mod.internal_animations)) mod.internal_animations = [];
+    (mod.internal_animations as Record<string, unknown>[]).push(structuredClone(item.anim));
+    host.status(`Added ${item.name}`);
+    host.refresh();
+  });
   const scroll = range(host.scroll, 0, 1, 0.01);
   scroll.addEventListener("input", () => host.setScroll(Number(scroll.value)));
   const unlock = check("Unlocked", host.unlocked, (value) => host.setUnlocked(value));
@@ -213,6 +234,13 @@ export function paintEvents(root: HTMLElement, host: StudioHost) {
   const mod = needItem(root, host);
   if (!mod) return;
   note(root, "Turn on Interact, then tap the item on the phone. Switches, lists, and music update the preview.");
+  recipes(root, "Recipes", EVENT_RECIPES, (item) => {
+    host.pushHistory();
+    if (!Array.isArray(mod.internal_events)) mod.internal_events = [];
+    (mod.internal_events as KEvent[]).push(structuredClone(item.event));
+    host.status(`Added ${item.name}`);
+    host.refresh();
+  });
   const list = Array.isArray(mod.internal_events) ? (mod.internal_events as KEvent[]) : [];
   root.append(
     action("Add tap", () => {
@@ -687,6 +715,24 @@ function toolButton(item: Tool, host: StudioHost): HTMLElement {
     );
   }
   return row;
+}
+
+function recipes<T extends { name: string }>(root: HTMLElement, label: string, items: T[], onPick: (item: T) => void) {
+  const wrap = document.createElement("div");
+  wrap.className = "chips";
+  const heading = document.createElement("span");
+  heading.className = "hint chip-label";
+  heading.textContent = label;
+  wrap.append(heading);
+  for (const item of items) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = item.name;
+    button.addEventListener("click", () => onPick(item));
+    wrap.append(button);
+  }
+  root.append(wrap);
 }
 
 function chips(area: HTMLTextAreaElement | HTMLInputElement): HTMLElement {

@@ -24,15 +24,15 @@ The dev server runs at http://localhost:5173.
 
 `Advanced` opens the builder used to design a preset, not only to nudge one that already exists.
 
-- **Tools** are grouped toolsets: draw, time, status, controls, and motion. Save the selected item into a named toolset; it stays in this browser.
+- **Tools** are grouped toolsets: draw, time, status, music, forecast, system, controls, and motion. Save the selected item into a named toolset; it stays in this browser.
 - **Formula** binds a property to a Kustom formula and shows the live result. The chips insert `df`, `if`, `bi`, `gv`, and the rest of the implemented set.
 - **Form** is the preset's global form: color, number, text, switch, and list. The preview at the top is the input someone fills in, and `gv()` reads it.
-- **Animate** writes KLWP `internal_animations` (loop, scroll, unlock, formula, switch) with fade, scale, rotate, and scroll. Loops play on the phone.
+- **Animate** writes KLWP `internal_animations` (loop, scroll, unlock, formula, switch) with fade, scale, rotate, and scroll. Recipes drop in a pulse, spin, blink, unlock, drift, or switch fade. Loops play on the phone.
 - **Color** edits `#AARRGGBB`, including alpha, gradients, and links to color globals.
-- **Events** write taps: toggle a global, set a list entry, control music, or record a link or app launch. **Interact** makes a tap on the phone run the event.
+- **Events** write taps: toggle a global, set a list entry, control music, or record a link or app launch. Recipes add a toggle, play, next, or link. **Interact** makes a tap on the phone run the event.
 - **Source** is the module or preset JSON. **Input** under it is what that item evaluates to, plus the globals it reads.
 
-The sample wallpaper is loaded on startup. `Blank` starts from an empty screen.
+`Presets` loads Harbor, Glass, Forecast, Lumen, or Atlas. Harbor is the wallpaper on startup. `Blank` starts from an empty screen.
 
 ## How the preview works
 

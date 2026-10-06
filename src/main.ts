@@ -7,6 +7,7 @@ import { evalLoose, globalValue, makeCtx, stringify } from "./formula/eval";
 import { readFile, writeArchive } from "./io";
 import { isContainer, layoutPreset, pathKey, positionWrites, presetSize, type MeasureFn } from "./layout";
 import { moduleAt, parentAt, setLiteral } from "./props";
+import { presetCatalog } from "./presets";
 import { blankPreset, harborPreset } from "./sample";
 import type { Device, GlobalDef, KModule, Preset, SceneNode } from "./types";
 
@@ -82,7 +83,10 @@ app.innerHTML = `
     <div class="filename" id="filename"></div>
     <div class="toolbar">
       <button id="blank" type="button">Blank</button>
-      <button id="sample" type="button">Sample</button>
+      <div class="preset-wrap">
+        <button id="presets" type="button">Presets</button>
+        <div id="preset-menu" class="preset-menu" hidden></div>
+      </div>
       <button id="open" type="button">Open</button>
       <button id="advanced" type="button">Advanced</button>
       <button id="export" class="primary" type="button">Export .klwp</button>
@@ -141,7 +145,34 @@ const tabBody = document.querySelector<HTMLDivElement>("#tab-body")!;
 const fileInput = document.querySelector<HTMLInputElement>("#file")!;
 
 document.querySelector("#blank")!.addEventListener("click", () => replaceDocument(blankPreset(), {}, "Untitled.klwp"));
-document.querySelector("#sample")!.addEventListener("click", () => replaceDocument(harborPreset(), {}, "Harbor.klwp"));
+const presetMenu = document.querySelector<HTMLDivElement>("#preset-menu")!;
+for (const entry of presetCatalog()) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.preset = entry.id;
+  const title = document.createElement("strong");
+  title.textContent = entry.title;
+  const blurb = document.createElement("span");
+  blurb.textContent = entry.blurb;
+  button.append(title, blurb);
+  button.addEventListener("click", () => {
+    replaceDocument(entry.build(), {}, entry.filename);
+    presetMenu.hidden = true;
+    if (state.filename === entry.filename) state.status = `${entry.title}. ${entry.blurb}`;
+  });
+  presetMenu.append(button);
+}
+document.querySelector("#presets")!.addEventListener("click", (event) => {
+  event.stopPropagation();
+  presetMenu.hidden = !presetMenu.hidden;
+  const current = state.preset.preset_info?.title;
+  for (const button of Array.from(presetMenu.querySelectorAll("button"))) {
+    button.classList.toggle("on", button.querySelector("strong")?.textContent === current);
+  }
+});
+document.addEventListener("click", (event) => {
+  if (!(event.target as HTMLElement).closest(".preset-wrap")) presetMenu.hidden = true;
+});
 document.querySelector("#open")!.addEventListener("click", () => fileInput.click());
 document.querySelector("#export")!.addEventListener("click", () => exportKlwp());
 fileInput.addEventListener("change", () => {
